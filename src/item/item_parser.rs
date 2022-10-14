@@ -1,5 +1,41 @@
 use crate::item::item::*;
 
+/// Parse an indent of spaces.
+///
+/// Example:
+/// 
+/// ```
+/// let input = "  foo";
+/// let (input, indent_str) = indent(input).unwrap();
+/// assert_eq!(input, "foo");
+/// assert_eq!(indent_str, "  ");
+/// ```
+///
+pub fn indent(input: &str) -> nom::IResult<&str, &str> {
+    nom::character::complete::multispace0(input)
+}
+
+/// Parse a list item symbol.
+///
+/// Example:
+/// 
+/// ```
+/// let input = "*";
+/// let (input, list_item_symbol_str) = checkbox_open(input).unwrap();
+/// assert_eq!(input, "");
+/// assert_eq!(list_item_symbol_str, "*");
+/// ```
+///
+pub fn list_item_symbol(input: &str) -> nom::IResult<&str, &str> {
+    nom::branch::alt((
+        nom::bytes::complete::tag("*"),
+        nom::bytes::complete::tag("+"),
+        nom::bytes::complete::tag("-"),
+        nom::bytes::complete::tag("#"),
+        nom::bytes::complete::tag("•"),
+    ))(input)
+}
+
 /// Parse a checkbox.
 ///
 /// Example:
@@ -8,9 +44,9 @@ use crate::item::item::*;
 /// let input = "[x]";
 /// let (input, checkbox_open_str, checkbox_mark_str, checkbox_shut_str) = checkbox(input).unwrap();
 /// assert_eq!(input, "");
-/// assert_eq!(checkbox_open_str, '[');
+/// assert_eq!(checkbox_open_str, "[");
 /// assert_eq!(checkbox_mark_str, "x");
-/// assert_eq!(checkbox_shut_str, ']');
+/// assert_eq!(checkbox_shut_str, "]");
 /// ```
 ///
 pub fn checkbox(input: &str) -> nom::IResult<&str, (&str, &str, &str)> {
@@ -70,20 +106,73 @@ pub fn checkbox_shut(input: &str) -> nom::IResult<&str, &str> {
     ))(input)
 }
 
-/// Parse a label.
+/// Parse a label that has 1 phrase.
 ///
 /// Example:
 /// 
 /// ```
 /// let input = "#foo";
-/// let (input, label_open, label_phrase) = label(input).unwrap();
+/// let (input, (
+///     label_open_str, 
+///     label_phrase_str
+/// )) = label1(input).unwrap();
 /// assert_eq!(input, "")
 /// assert_eq!(label_open_str, "#");
 /// assert_eq!(label_phrase_str, "foo");
 /// ```
 ///
-pub fn label(input: &str) -> nom::IResult<&str, (&str, &str)> {
+pub fn label1(input: &str) -> nom::IResult<&str, (&str, &str)> {
     nom::sequence::tuple((label_open, label_phrase))(input)
+}
+
+/// Parse a label that has 2 phrases.
+///
+/// Example:
+/// 
+/// ```
+/// let input = "#foo:goo";
+/// let (input, (
+///     label_open_str,
+///     label_phrase_0_str, 
+///     label_splitter_0_str,
+///     label_phrase_1_str
+/// )) = label2(input).unwrap();
+/// assert_eq!(input, "")
+/// assert_eq!(label_open_str, "#");
+/// assert_eq!(label_phrase_0_str, "foo");
+/// assert_eq!(label_spliter_0_str, ":");
+/// assert_eq!(label_phrase_1_str, "goo");
+/// ```
+///
+pub fn label2(input: &str) -> nom::IResult<&str, (&str, &str, &str, &str)> {
+    nom::sequence::tuple((label_open, label_phrase, label_splitter, label_phrase))(input)
+}
+
+/// Parse a label with 3 phrases.
+///
+/// Example:
+/// 
+/// ```
+/// let input = "#foo:goo:hoo";
+/// let (input, (
+///     label_open_str,
+///     label_phrase_0_str, 
+///     label_splitter_0_str, 
+///     label_phrase_1_str, 
+///     label_splitter_1_str, 
+///     label_phrase_2_str
+/// )) = label3(input).unwrap();
+/// assert_eq!(input, "")
+/// assert_eq!(label_open_str, "#");
+/// assert_eq!(label_phrase_0_str, "foo");
+/// assert_eq!(label_spliter_0_str, ":");
+/// assert_eq!(label_phrase_1_str, "goo");
+/// assert_eq!(label_spliter_1_str, ":");
+/// assert_eq!(label_phrase_2_str, "hoo");
+/// ```
+///
+pub fn label3(input: &str) -> nom::IResult<&str, (&str, &str, &str, &str, &str, &str)> {
+    nom::sequence::tuple((label_open, label_phrase, label_splitter, label_phrase, label_splitter, label_phrase))(input)
 }
 
 /// Parse a label open.
@@ -161,24 +250,28 @@ pub fn memo(input: &str) -> nom::IResult<&str, &str> {
 /// let input = "[x] foo"
 /// let (_input, item) = crate::item::item::item_parser::one(input);
 /// assert_eq!(item, Item { 
-///     checkbox_open: "[".into(), 
-///     checkbox_mark: "x".into(), 
-///     checkbox_shut: "]".into(), 
-///     memo: "foo".into(),
+///     nest: Some(0),
+///     mark: Some("x".into()), 
+///     memo: Some("foo".into()),
+///     label1s: None,
+///     label2s: None,
 /// })
 /// ```
 ///
 pub fn one(input: &str) -> nom::IResult<&str, Item> {
-    let (input, _) = nom::character::complete::multispace0(input)?;
-    let (input, (checkbox_open_str, checkbox_mark_str, checkbox_shut_str)) = self::checkbox(input)?;
-    let (input, _) = nom::character::complete::space0(input)?;
+    let (input, _indent_str) = self::indent(input)?;
+    let (input, _list_item_symbol_str) = self::list_item_symbol(input)?;
+    let (input, _) = self::indent(input)?;
+    let (input, (_checkbox_open_str, checkbox_mark_str, _checkbox_shut_str)) = self::checkbox(input)?;
+    let (input, _) = self::indent(input)?;
     let (input, memo) = self::memo(input)?;
     let (input, _) = nom::character::complete::multispace0(input)?;
-    let item = Item { 
-        checkbox_open: checkbox_open_str.into(),
-        checkbox_mark: checkbox_mark_str.into(),
-        checkbox_shut: checkbox_shut_str.into(),
-        memo: memo.into(),
+    let item = Item {
+        nest: Some(0 as u8), //Some((indent_str.len() / 2) as i8),
+        mark: Some(checkbox_mark_str.into()),
+        memo: Some(memo.into()),
+        label1s: None,
+        label2s: None,
     };
     Ok((input, item))
 }
@@ -202,6 +295,38 @@ pub fn many0(input: &str) -> nom::IResult<&str, Vec<Item>> {
 mod tests {
     use super::*;
     use indoc::indoc;
+
+    #[test]
+    fn test_indent_with_0_spaces() {
+        let input = "x";
+        let (input, indent_str) = super::indent(input).unwrap();
+        assert_eq!(input, "x");
+        assert_eq!(indent_str, "");
+    }
+
+    #[test]
+    fn test_indent_with_2_spaces() {
+        let input = "  x";
+        let (input, indent_str) = super::indent(input).unwrap();
+        assert_eq!(input, "x");
+        assert_eq!(indent_str, "  ");
+    }
+
+    #[test]
+    fn test_list_item_symbol() {
+        let input = "*";
+        let (input, list_item_symbol_str) = super::list_item_symbol(input).unwrap();
+        assert_eq!(input, "");
+        assert_eq!(list_item_symbol_str, "*");
+    }
+
+    #[test]
+    fn test_list_item_symbol_with_high_unicode() {
+        let input = "•"; // U+2022 BULLET
+        let (input, list_item_symbol_str) = super::list_item_symbol(input).unwrap();
+        assert_eq!(input, "");
+        assert_eq!(list_item_symbol_str, "•");
+    }
 
     #[test]
     fn test_checkbox() {
@@ -272,21 +397,63 @@ mod tests {
     }
 
     #[test]
-    fn test_label() {
+    fn test_label1() {
         let input = "#foo";
-        let (input, (label_open_str, label_phrase_str)) = super::label(input).unwrap();
+        let (input, (
+            label_open_str, 
+            label_phrase_str,
+        )) = super::label1(input).unwrap();
         assert_eq!(input, "");
         assert_eq!(label_open_str, "#");
         assert_eq!(label_phrase_str, "foo");
     }
 
     #[test]
-    fn test_label_with_high_unicode() {
+    fn test_label1_with_high_unicode() {
         let input = "＃αβ"; // U+FF03 FULLWIDTH NUMBER SIGN, U+03B1 GREEK SMALL LETTER ALPHA, U+03B2 GREEK SMALL LETTER BETA
-        let (input, (label_open_str, label_phrase_str)) = super::label(input).unwrap();
+        let (input, (
+            label_open_str, 
+            label_phrase_str,
+        )) = super::label1(input).unwrap();
         assert_eq!(input, "");
         assert_eq!(label_open_str, "＃");
         assert_eq!(label_phrase_str, "αβ");
+    }
+
+    #[test]
+    fn test_label2() {
+        let input = "#foo:goo";
+        let (input, (
+            label_open_str, 
+            label_phrase_0_str, 
+            label_splitter_0_str,
+            label_phrase_1_str, 
+        )) = super::label2(input).unwrap();
+        assert_eq!(input, "");
+        assert_eq!(label_open_str, "#");
+        assert_eq!(label_phrase_0_str, "foo");
+        assert_eq!(label_splitter_0_str, ":");
+        assert_eq!(label_phrase_1_str, "goo");
+    }
+
+    #[test]
+    fn test_label3() {
+        let input = "#foo:goo:hoo";
+        let (input, (
+            label_open_str, 
+            label_phrase_0_str, 
+            label_splitter_0_str,
+            label_phrase_1_str, 
+            label_splitter_1_str,
+            label_phrase_2_str, 
+        )) = super::label3(input).unwrap();
+        assert_eq!(input, "");
+        assert_eq!(label_open_str, "#");
+        assert_eq!(label_phrase_0_str, "foo");
+        assert_eq!(label_splitter_0_str, ":");
+        assert_eq!(label_phrase_1_str, "goo");
+        assert_eq!(label_splitter_1_str, ":");
+        assert_eq!(label_phrase_2_str, "hoo");
     }
 
     #[test]
@@ -320,7 +487,7 @@ mod tests {
         assert_eq!(input, "");
         assert_eq!(label_phrase_str, "αβ");
     }
-
+    
     #[test]
     fn test_label_splitter() {
         let input = ":";
@@ -351,10 +518,28 @@ mod tests {
             [x] foo
         "};
         let expect_item =  Item {
-            checkbox_open: "[".into(),
-            checkbox_mark: "x".into(),
-            checkbox_shut: "]".into(),
-            memo: "foo".into(),
+            nest: Some(0),
+            mark: Some("x".into()),
+            memo: Some("foo".into()),
+            label1s: None,
+            label2s: None,
+        };
+        let actual = crate::item::item_parser::one(input);
+        let expect = Ok(("", expect_item));
+        assert_eq!(actual, expect);
+    }
+
+    #[test]
+    fn test_one_with_list_item_symbol() {
+        let input = indoc!{"
+            * [x] foo
+        "};
+        let expect_item =  Item {
+            nest: Some(0),
+            mark: Some("x".into()),
+            memo: Some("foo".into()),
+            label1s: None,
+            label2s: None,
         };
         let actual = crate::item::item_parser::one(input);
         let expect = Ok(("", expect_item));
@@ -364,35 +549,139 @@ mod tests {
     #[test]
     fn test_many0() {
         let input = indoc!{"
-            [ ] Do
+            [ ] foo
 
-            [!] Doing
+            [!] goo
 
-            [x] Done
+            [x] hoo
         "};
         let expect_items = vec![
             Item {
-                checkbox_open: "[".into(),
-                checkbox_mark: " ".into(),
-                checkbox_shut: "]".into(),
-                memo: "Do".into(),
+                nest: Some(0),
+                mark: Some(" ".into()),
+                memo: Some("foo".into()),
+                label1s: None,
+                label2s: None,
             },
             Item {
-                checkbox_open: "[".into(),
-                checkbox_mark: "!".into(),
-                checkbox_shut: "]".into(),
-                memo: "Doing".into(),
+                nest: Some(0),
+                mark: Some("!".into()),
+                memo: Some("goo".into()),
+                label1s: None,
+                label2s: None,
             },
             Item {
-                checkbox_open: "[".into(),
-                checkbox_mark: "x".into(),
-                checkbox_shut: "]".into(),
-                memo: "Done".into(),
+                nest: Some(0),
+                mark: Some("x".into()),
+                memo: Some("hoo".into()),
+                label1s: None,
+                label2s: None,
             },
         ];
         let actual = crate::item::item_parser::many0(input);
         let expect = Ok(("", expect_items));
         assert_eq!(actual, expect);
     }
-    
+
+    // #[test]
+    // fn test_many0_with_readme_example() {
+    //     let input = indoc!{"
+    //         - [ ] Call friends to
+    //               ask who's coming
+    //               #personal
+    //               #priority:1
+
+    //           - [ ] Call Alice
+
+    //           - [ ] Call Bob
+
+    //         - [x] Send invitations
+    //               to save the date
+
+    //           - [x] Email Carol
+
+    //           - [x] Text Dave
+
+    //         - [@] Arrange flowers; delegate to the 
+    //               florist who will deliver on the day
+    //               #phone:1-800-FLOWERS
+    //               #order:12345678
+
+    //         - [.] Prepare food; defer the shopping and
+    //               cooking to the week before the party
+
+    //         - [/] Reserve venue; drop because we
+    //               decided to do the party at home
+
+    //     "}; 
+    //     let expect_items = vec![
+    //         Item {
+    //             nest: Some(0),
+    //             mark: Some(" ".into()),
+    //             memo: Some("Call friends to\nask who's coming\n#personal\n#priority:1".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(1),
+    //             mark: Some(" ".into()),
+    //             memo: Some("Call Alice".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(1),
+    //             mark: Some(" ".into()),
+    //             memo: Some("Call Bob".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(0),
+    //             mark: Some("x".into()),
+    //             memo: Some("Send invitations\nto save the date".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(1),
+    //             mark: Some("x".into()),
+    //             memo: Some("Email Carol".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(1),
+    //             mark: Some("x".into()),
+    //             memo: Some("Text Dave".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(0),
+    //             mark: Some("@".into()),
+    //             memo: Some("Arrange flowers; delegate to the\nflorist who will deliver on the day\n#phone:1-800-FLOWERS\n#order:12345678".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(0),
+    //             mark: Some(".".into()),
+    //             memo: Some("Prepare food; defer the shopping and\ncooking to the week before the party".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //         Item {
+    //             nest: Some(0),
+    //             mark: Some("/".into()),
+    //             memo: Some("Reserve venue; drop because we\ndecided to do the party at home".into()),
+    //             label1s: None,
+    //             label2s: None,
+    //         },
+    //     ];
+    //     let actual = crate::item::item_parser::many0(input);
+    //     let expect = Ok(("", expect_items));
+    //     assert_eq!(actual, expect);
+    // }
+
 }

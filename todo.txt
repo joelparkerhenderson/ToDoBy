@@ -1,0 +1,9 @@
+[ ] alpha
+alpha line 2
+alpha line 3
+
+[ ] bravo
+    bravo line 2
+    bravo line 3
+
+[x] charlie

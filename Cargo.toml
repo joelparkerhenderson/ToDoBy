@@ -1,5 +1,5 @@
 [package]
-name = "todoby-json"
+name = "todoby"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,5 +15,8 @@ cursive-markup = "^0"
 indoc = "*"
 nom = { version = "7.1.1", features = ["alloc"] }
 nom-unicode = "*"
+once_cell = "1.15.0"
+once-cell-regex = "0.2.1"
+regex = "1.6.0"
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0"

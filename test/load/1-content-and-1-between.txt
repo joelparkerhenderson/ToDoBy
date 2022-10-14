@@ -1,0 +1,5 @@
+[ ] alpha1
+
+[!] bravo1
+
+[x] charlie1
