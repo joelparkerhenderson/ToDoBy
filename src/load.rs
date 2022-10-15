@@ -63,19 +63,19 @@ pub fn load_items_via_file(file: File) -> ::std::io::Result<Vec<Item>> {
 /// let items = load_items_via_str(str).unwrap();
 /// ```
 /// 
-pub fn load_items_via_str(s: &str) -> ::std::io::Result<Vec<Item>> {
-    load_items_via_string_reader(::stringreader::StringReader::new(s))
+pub fn load_items_via_str(str: &str) -> ::std::io::Result<Vec<Item>> {
+    load_items_via_read(str.as_bytes())
 }
 
-/// Load items via string reader.
+/// Load items via read.
 /// 
 /// ```
-/// let string_reader = StringReader::new("[ ] foo\n[!] goo\n[x] hoo\n");
-/// let items = load_items_via_string_reader(str).unwrap();
+/// let read = "[ ] foo\n[!] goo\n[x] hoo\n".as_bytes();
+/// let items = load_items_via_read(read).unwrap();
 /// ```
 /// 
-pub fn load_items_via_string_reader(string_reader: ::stringreader::StringReader) -> std::io::Result<Vec<Item>> {
-    load_items_via_buf_read(::std::io::BufReader::new(string_reader))
+pub fn load_items_via_read(read: impl ::std::io::Read) -> ::std::io::Result<Vec<Item>> {
+    load_items_via_buf_read(::std::io::BufReader::new(read))
 }
 
 /// Load items via buf read.
@@ -85,7 +85,7 @@ pub fn load_items_via_string_reader(string_reader: ::stringreader::StringReader)
 /// let items = load_items_via_buf_read(str).unwrap();
 /// ```
 /// 
-pub fn load_items_via_buf_read(buf_read: impl std::io::BufRead) -> std::io::Result<Vec<Item>> {
+pub fn load_items_via_buf_read(buf_read: impl std::io::BufRead) -> ::std::io::Result<Vec<Item>> {
     let mut vec: Vec<Item> = Vec::new();
     let mut state = State::Do;
     let mut line_kind: LineKind;
@@ -202,14 +202,14 @@ mod tests {
     }
 
     #[test]
-    fn test_load_items_via_string_reader() {
+    fn test_load_items_via_read() {
         let str = indoc!{"
             [ ] foo
             [!] goo
             [x] hoo
         "};
-        let string_reader = ::stringreader::StringReader::new(&str);
-        let actual = load_items_via_string_reader(string_reader).unwrap();
+        let read = str.as_bytes();
+        let actual = load_items_via_read(read).unwrap();
         let expect = vec![
             Item {
                 nest: Some(0),
@@ -236,64 +236,123 @@ mod tests {
         assert_eq!(actual, expect);
     }
 
-    #[test]
-    fn test_1_content() {
-        let expect = vec![
-            Item {
-                nest: Some(0),
-                mark: Some(" ".into()),
-                memo: Some("alpha1".into()),
-                label1s: None,
-                label2s: None,
-            },
-            Item {
-                nest: Some(0),
-                mark: Some("!".into()),
-                memo: Some("bravo1".into()),
-                label1s: None,
-                label2s: None,
-            },
-            Item {
-                nest: Some(0),
-                mark: Some("x".into()),
-                memo: Some("charlie1".into()),
-                label1s: None,
-                label2s: None,
-            },
-        ];
-        assert_eq!(load_items_via_path(Path::new("test/load/1-content-and-0-between.txt")).unwrap(), expect);
-        assert_eq!(load_items_via_path(Path::new("test/load/1-content-and-1-between.txt")).unwrap(), expect);
-        assert_eq!(load_items_via_path(Path::new("test/load/1-content-and-2-between.txt")).unwrap(), expect);
+    mod test_parsing_with_1_content_line {
+        use super::*;
+
+        fn expect() -> Vec<Item> {
+            vec![
+                Item {
+                    nest: Some(0),
+                    mark: Some(" ".into()),
+                    memo: Some("alpha1".into()),
+                    label1s: None,
+                    label2s: None,
+                },
+                Item {
+                    nest: Some(0),
+                    mark: Some("!".into()),
+                    memo: Some("bravo1".into()),
+                    label1s: None,
+                    label2s: None,
+                },
+                Item {
+                    nest: Some(0),
+                    mark: Some("x".into()),
+                    memo: Some("charlie1".into()),
+                    label1s: None,
+                    label2s: None,
+                },
+            ]
+        }
+
+        #[test]
+        fn with_0_between() {
+            let str = indoc!{"
+                [ ] alpha1
+                [!] bravo1
+                [x] charlie1
+            "};
+            let actual = load_items_via_str(&str).unwrap();
+            assert_eq!(actual, expect());
+        }
+
+        #[test]
+        fn with_1_between() {
+            let str = indoc!{"
+
+                [ ] alpha1
+
+                [!] bravo1
+
+                [x] charlie1
+
+            "};
+            let actual = load_items_via_str(&str).unwrap();
+            assert_eq!(actual, expect());
+        }
+
     }
 
-    #[test]
-    fn test_2_content() {
-        let expect = vec![
-            Item {
-                nest: Some(0),
-                mark: Some(" ".into()),
-                memo: Some("alpha1\nalpha2".into()),
-                label1s: None,
-                label2s: None,
-            },
-            Item {
-                nest: Some(0),
-                mark: Some("!".into()),
-                memo: Some("bravo1\nbravo2".into()),
-                label1s: None,
-                label2s: None,
-            },
-            Item {
-                nest: Some(0),
-                mark: Some("x".into()),
-                memo: Some("charlie1\ncharlie2".into()),
-                label1s: None,
-                label2s: None,
-            },
-        ];
-        assert_eq!(load_items_via_path(Path::new("test/load/2-content-and-0-between.txt")).unwrap(), expect);
-        assert_eq!(load_items_via_path(Path::new("test/load/2-content-and-1-between.txt")).unwrap(), expect);
-        assert_eq!(load_items_via_path(Path::new("test/load/2-content-and-2-between.txt")).unwrap(), expect);
+    mod test_parsing_with_2_content_line {
+        use super::*;
+
+        fn expect() -> Vec<Item> {
+            vec![
+                Item {
+                    nest: Some(0),
+                    mark: Some(" ".into()),
+                    memo: Some("alpha1\nalpha2".into()),
+                    label1s: None,
+                    label2s: None,
+                },
+                Item {
+                    nest: Some(0),
+                    mark: Some("!".into()),
+                    memo: Some("bravo1\nbravo2".into()),
+                    label1s: None,
+                    label2s: None,
+                },
+                Item {
+                    nest: Some(0),
+                    mark: Some("x".into()),
+                    memo: Some("charlie1\ncharlie2".into()),
+                    label1s: None,
+                    label2s: None,
+                },
+            ]
+        }
+
+        #[test]
+        fn with_0_between() {
+            let str = indoc!{"
+                [ ] alpha1
+                    alpha2
+                [!] bravo1
+                    bravo2
+                [x] charlie1
+                    charlie2
+            "};
+            let actual = load_items_via_str(&str).unwrap();
+            assert_eq!(actual, expect());
+        }
+
+        #[test]
+        fn with_1_between() {
+            let str = indoc!{"
+
+                [ ] alpha1
+                    alpha2
+
+                [!] bravo1
+                    bravo2
+
+                [x] charlie1
+                    charlie2
+            "};
+            let actual = load_items_via_str(&str).unwrap();
+            assert_eq!(actual, expect());
+        }
+
     }
 
     #[test]

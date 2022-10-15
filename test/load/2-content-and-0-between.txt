@@ -1,6 +1,0 @@
-[ ] alpha1
-    alpha2
-[!] bravo1
-    bravo2
-[x] charlie1
-    charlie2
