@@ -1,12 +1,12 @@
 use std::fs::File;
 use std::path::Path;
+use std::io::BufReader;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use regex::bytes::Captures;
 use crate::item::item::Item;
 
-static REGEX_LINE_ITEM_OPEN: Lazy<Regex> = Lazy::new(||Regex::new(r"^\s*[\*\+\-#•]?\s*\[.\]").unwrap());
-static REGEX_LINE_ITEM_OPEN_CAPTURES: Lazy<Regex> = Lazy::new(||Regex::new(r"^(\s*)[\*\+\-#•]?\s*\[(.)\]\s*(.*)$").unwrap());
+static REGEX_LINE_ITEM_OPEN: Lazy<Regex> = Lazy::new(||Regex::new(r"^\s*[\*\+\-•]?\s*\[.\]").unwrap());
+static REGEX_LINE_ITEM_OPEN_CAPTURES: Lazy<Regex> = Lazy::new(||Regex::new(r"^(\s*)[\*\+\-•]?\s*\[(.)\]\s*(.*)$").unwrap());
 static REGEX_LINE_BLANK: Lazy<Regex> = Lazy::new(||Regex::new(r"^\s*$").unwrap());
 
 #[derive(Debug, PartialEq)]
@@ -22,22 +22,77 @@ enum LineKind {
     Other,
 }
 
-pub fn load_items_via_path(path: &Path) -> std::io::Result<Vec<Item>> {
-    load_items_via_file(std::fs::File::open(path)?)
+/// Calculate the nest level.
+/// 
+/// Nesting can be done by any combination of:
+/// 
+///    * 1 tab
+///    * 4 spaces
+/// 
+pub fn whitespace_to_nest(s: &str) -> u8 {
+    s.matches("\t").count() as u8 +
+    (s.matches(" ").count() as u8 / 4)
 }
 
-pub fn load_items_via_file(file: File) -> std::io::Result<Vec<Item>> {
-    load_items_via_reader(std::io::BufReader::new(file))
+/// Load items via path.
+/// 
+/// ```
+/// let path = Path::new("example.txt");
+/// let items = load_items_via_path(file).unwrap();
+/// ```
+/// 
+pub fn load_items_via_path(path: &Path) -> ::std::io::Result<Vec<Item>> {
+    load_items_via_file(::std::fs::File::open(path)?)
 }
 
-pub fn load_items_via_reader(reader: impl std::io::BufRead) -> std::io::Result<Vec<Item>> {
+/// Load items via file.
+/// 
+/// ```
+/// let file = File::open("example.txt").unwrap();
+/// let items = load_items_via_file(file).unwrap();
+/// ```
+/// 
+pub fn load_items_via_file(file: File) -> ::std::io::Result<Vec<Item>> {
+    load_items_via_buf_read(::std::io::BufReader::new(file))
+}
+
+/// Load items via str.
+/// 
+/// ```
+/// let str = "[ ] foo\n[!] goo\n[x] hoo\n";
+/// let items = load_items_via_str(str).unwrap();
+/// ```
+/// 
+pub fn load_items_via_str(s: &str) -> ::std::io::Result<Vec<Item>> {
+    load_items_via_string_reader(::stringreader::StringReader::new(s))
+}
+
+/// Load items via string reader.
+/// 
+/// ```
+/// let string_reader = StringReader::new("[ ] foo\n[!] goo\n[x] hoo\n");
+/// let items = load_items_via_string_reader(str).unwrap();
+/// ```
+/// 
+pub fn load_items_via_string_reader(string_reader: ::stringreader::StringReader) -> std::io::Result<Vec<Item>> {
+    load_items_via_buf_read(::std::io::BufReader::new(string_reader))
+}
+
+/// Load items via buf read.
+/// 
+/// ```
+/// let buf_read = BufReader::new(File::open("example.txt").unwrap())
+/// let items = load_items_via_buf_read(str).unwrap();
+/// ```
+/// 
+pub fn load_items_via_buf_read(buf_read: impl std::io::BufRead) -> std::io::Result<Vec<Item>> {
     let mut vec: Vec<Item> = Vec::new();
     let mut state = State::Do;
     let mut line_kind: LineKind;
     let mut nest = 0 as u8;
     let mut mark = String::from("?");
     let mut memo = String::from("?");
-    let lines = reader.lines();
+    let lines = buf_read.lines();
     for line in lines {
         let s = line?;
         println!("line: {}", s);
@@ -50,7 +105,6 @@ pub fn load_items_via_reader(reader: impl std::io::BufRead) -> std::io::Result<V
         } else {
             LineKind::Other  
         };
-        println!("line_kind: {:?}", line_kind);
 
         // If there's an item in progress, then can we finish it?
         if state == State::Doing && (line_kind == LineKind::ItemOpen || line_kind == LineKind::Blank) {
@@ -64,17 +118,18 @@ pub fn load_items_via_reader(reader: impl std::io::BufRead) -> std::io::Result<V
         }
         match line_kind {
             LineKind::ItemOpen => {
+                state = State::Doing;
                 if let Some(captures) = REGEX_LINE_ITEM_OPEN_CAPTURES.captures(&s) {
-                    //nest = captures.get(1).map_or(0, |m| m.as_str().parse::<u8>().expect("nest"));
+                    nest = captures.get(1).map_or(0, |m| whitespace_to_nest(m.as_str()));
                     mark = String::from(captures.get(2).map_or("?", |m| m.as_str()));
                     memo = String::from(captures.get(3).map_or("?", |m| m.as_str().trim()));
                 }
-                state = State::Doing;
             },
             LineKind::Blank => {
                 state = State::Do;
             },
             LineKind::Other => {
+                state = State::Doing;
                 memo.push_str("\n");
                 memo.push_str(&s.trim());
             }
@@ -95,6 +150,91 @@ pub fn load_items_via_reader(reader: impl std::io::BufRead) -> std::io::Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
+
+    #[test]
+    fn test_whitespace_to_nest() {
+        assert_eq!(whitespace_to_nest(""), 0);
+        assert_eq!(whitespace_to_nest(" "), 0);
+        assert_eq!(whitespace_to_nest("  "), 0);
+        assert_eq!(whitespace_to_nest("   "), 0);
+        assert_eq!(whitespace_to_nest("    "), 1);
+        assert_eq!(whitespace_to_nest("     "), 1);
+        assert_eq!(whitespace_to_nest("      "), 1);
+        assert_eq!(whitespace_to_nest("       "), 1);
+        assert_eq!(whitespace_to_nest("        "), 2);
+        assert_eq!(whitespace_to_nest("\t"), 1);
+        assert_eq!(whitespace_to_nest("\t\t"), 2);
+    }
+
+    #[test]
+    fn test_load_items_via_str() {
+        let str = indoc!{"
+            [ ] foo
+            [!] goo
+            [x] hoo
+        "};
+        let actual = load_items_via_str(str).unwrap();
+        let expect = vec![
+            Item {
+                nest: Some(0),
+                mark: Some(" ".into()),
+                memo: Some("foo".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(0),
+                mark: Some("!".into()),
+                memo: Some("goo".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(0),
+                mark: Some("x".into()),
+                memo: Some("hoo".into()),
+                label1s: None,
+                label2s: None,
+            },
+        ];
+        assert_eq!(actual, expect);
+    }
+
+    #[test]
+    fn test_load_items_via_string_reader() {
+        let str = indoc!{"
+            [ ] foo
+            [!] goo
+            [x] hoo
+        "};
+        let string_reader = ::stringreader::StringReader::new(&str);
+        let actual = load_items_via_string_reader(string_reader).unwrap();
+        let expect = vec![
+            Item {
+                nest: Some(0),
+                mark: Some(" ".into()),
+                memo: Some("foo".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(0),
+                mark: Some("!".into()),
+                memo: Some("goo".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(0),
+                mark: Some("x".into()),
+                memo: Some("hoo".into()),
+                label1s: None,
+                label2s: None,
+            },
+        ];
+        assert_eq!(actual, expect);
+    }
 
     #[test]
     fn test_1_content() {
@@ -157,7 +297,13 @@ mod tests {
     }
 
     #[test]
-    fn test_list_item_symbols() {
+    fn test_list_markers() {
+        let str = indoc!{"
+            + [ ] plus
+            - [ ] minus
+            * [ ] asterisk
+        "};
+        let actual = load_items_via_str(str).unwrap();
         let expect = vec![
             Item {
                 nest: Some(0),
@@ -180,22 +326,124 @@ mod tests {
                 label1s: None,
                 label2s: None,
             },
+        ];
+        assert_eq!(actual, expect);
+    }
+
+    #[test]
+    fn test_indent_with_spaces() {
+        let str = indoc!{"
+            [ ] 0-space
+             [ ] 1-space
+              [ ] 2-space
+               [ ] 3-space
+                [ ] 4-space
+                 [ ] 5-space
+                  [ ] 6-space
+                   [ ] 7-space
+                    [ ] 8-space
+        "};
+        let actual = load_items_via_str(&str).unwrap();
+        let expect = vec![
             Item {
                 nest: Some(0),
                 mark: Some(" ".into()),
-                memo: Some("number sign".into()),
+                memo: Some("0-space".into()),
                 label1s: None,
                 label2s: None,
             },
             Item {
                 nest: Some(0),
                 mark: Some(" ".into()),
-                memo: Some("bullet".into()),
+                memo: Some("1-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(0),
+                mark: Some(" ".into()),
+                memo: Some("2-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(0),
+                mark: Some(" ".into()),
+                memo: Some("3-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(1),
+                mark: Some(" ".into()),
+                memo: Some("4-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(1),
+                mark: Some(" ".into()),
+                memo: Some("5-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(1),
+                mark: Some(" ".into()),
+                memo: Some("6-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(1),
+                mark: Some(" ".into()),
+                memo: Some("7-space".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(2),
+                mark: Some(" ".into()),
+                memo: Some("8-space".into()),
                 label1s: None,
                 label2s: None,
             },
         ];
-        assert_eq!(load_items_via_path(Path::new("test/load/list-item-symbols.txt")).unwrap(), expect);
+        assert_eq!(actual, expect);
+    }
+
+    #[test]
+    fn test_indent_with_tabs() {
+        let str = indoc!{"
+            [ ] 0-tab
+            \t[ ] 1-tab
+            \t\t[ ] 2-tab
+        "};
+        let actual = load_items_via_str(&str).unwrap();
+        let expect = vec![
+            Item {
+                nest: Some(0),
+                mark: Some(" ".into()),
+                memo: Some("0-tab".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(1),
+                mark: Some(" ".into()),
+                memo: Some("1-tab".into()),
+                label1s: None,
+                label2s: None,
+            },
+            Item {
+                nest: Some(2),
+                mark: Some(" ".into()),
+                memo: Some("2-tab".into()),
+                label1s: None,
+                label2s: None,
+            },
+        ];
+        assert_eq!(actual, expect);
     }
 
 }

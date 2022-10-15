@@ -15,23 +15,22 @@ pub fn indent(input: &str) -> nom::IResult<&str, &str> {
     nom::character::complete::multispace0(input)
 }
 
-/// Parse a list item symbol.
+/// Parse a list marker.
 ///
 /// Example:
 /// 
 /// ```
 /// let input = "*";
-/// let (input, list_item_symbol_str) = checkbox_open(input).unwrap();
+/// let (input, list_marker_str) = checkbox_open(input).unwrap();
 /// assert_eq!(input, "");
-/// assert_eq!(list_item_symbol_str, "*");
+/// assert_eq!(list_marker_str, "*");
 /// ```
 ///
-pub fn list_item_symbol(input: &str) -> nom::IResult<&str, &str> {
+pub fn list_marker(input: &str) -> nom::IResult<&str, &str> {
     nom::branch::alt((
         nom::bytes::complete::tag("*"),
         nom::bytes::complete::tag("+"),
         nom::bytes::complete::tag("-"),
-        nom::bytes::complete::tag("#"),
         nom::bytes::complete::tag("•"),
     ))(input)
 }
@@ -260,7 +259,7 @@ pub fn memo(input: &str) -> nom::IResult<&str, &str> {
 ///
 pub fn one(input: &str) -> nom::IResult<&str, Item> {
     let (input, _indent_str) = self::indent(input)?;
-    let (input, _list_item_symbol_str) = self::list_item_symbol(input)?;
+    let (input, _list_marker_str) = self::list_marker(input)?;
     let (input, _) = self::indent(input)?;
     let (input, (_checkbox_open_str, checkbox_mark_str, _checkbox_shut_str)) = self::checkbox(input)?;
     let (input, _) = self::indent(input)?;
@@ -313,19 +312,19 @@ mod tests {
     }
 
     #[test]
-    fn test_list_item_symbol() {
+    fn test_list_marker() {
         let input = "*";
-        let (input, list_item_symbol_str) = super::list_item_symbol(input).unwrap();
+        let (input, list_marker_str) = super::list_marker(input).unwrap();
         assert_eq!(input, "");
-        assert_eq!(list_item_symbol_str, "*");
+        assert_eq!(list_marker_str, "*");
     }
 
     #[test]
-    fn test_list_item_symbol_with_high_unicode() {
+    fn test_list_marker_with_high_unicode() {
         let input = "•"; // U+2022 BULLET
-        let (input, list_item_symbol_str) = super::list_item_symbol(input).unwrap();
+        let (input, list_marker_str) = super::list_marker(input).unwrap();
         assert_eq!(input, "");
-        assert_eq!(list_item_symbol_str, "•");
+        assert_eq!(list_marker_str, "•");
     }
 
     #[test]
@@ -530,7 +529,7 @@ mod tests {
     }
 
     #[test]
-    fn test_one_with_list_item_symbol() {
+    fn test_one_with_list_marker() {
         let input = indoc!{"
             * [x] foo
         "};

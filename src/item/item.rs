@@ -10,8 +10,8 @@ pub struct Item {
 }
 
 static NEST_DEFAULT: i8 = 0;
-static LIST_ITEM_SYMBOL_DEFAULT: &str = "";
-static LIST_ITEM_SYMBOL_SPACER_DEFAULT: &str = "";
+static LIST_MARKER_DEFAULT: &str = "";
+static LIST_MARKER_SPACER_DEFAULT: &str = "";
 static CHECKBOX_PREFIX_DEFAULT: &str = "";
 static CHECKBOX_OPEN_DEFAULT: &str = "[";
 static CHECKBOX_MARK_DEFAULT: &str = " ";
@@ -22,8 +22,8 @@ static MEMO_DEFAULT: &str = "?";
 impl std::fmt::Display for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}{}{}{}{}{}{}{}",
-            LIST_ITEM_SYMBOL_DEFAULT,
-            LIST_ITEM_SYMBOL_SPACER_DEFAULT,
+            LIST_MARKER_DEFAULT,
+            LIST_MARKER_SPACER_DEFAULT,
             CHECKBOX_PREFIX_DEFAULT,
             CHECKBOX_OPEN_DEFAULT,
             match &self.mark { Some(x) => x, None => CHECKBOX_MARK_DEFAULT },
